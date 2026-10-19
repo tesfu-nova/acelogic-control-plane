@@ -1,0 +1,76 @@
+apiVersion: acelogic.ai/v1
+kind: AgentIdentityPolicy
+metadata:
+  name: ea-482991
+  namespace: acelogic-system
+spec:
+  # ---- Vector reference ----
+  # This fixture mirrors Shompod's VECTOR_AGENT from the frozen
+  # cryptographicVectors.test.js so that the reference hashes below
+  # can be verified byte-for-byte against the Genesis crypto contract.
+  agentId: "507f1f77bcf86cd799439011"
+  agentClass: dimensional
+  state: ACTIVE
+
+  licenseTier: TIER_5
+
+  grammarLicense:
+    enabled: true
+    level: FULL
+    allowedPrefixes:
+      - "#us#."
+
+  symbolicNamespace: "#us#.agent.dimensional.core"
+  k8sNamespace: "us-agent-dimensional-core"
+
+  mission: "Preserve deterministic continuity."
+
+  org_id: "64f100000000000000000001"
+  compliance:
+    - "Identity Sovereignty"
+    - "Continuity Ethics"
+  jurisdiction: "BD"
+  full_identity: "#us#.agent.dimensional.core.vectoragent"
+
+  owner:
+    name: "Vector Authority"
+
+  license_birth:
+    issued_license_id: "64f200000000000000000001"
+    template_id: "64f300000000000000000001"
+    code: "TIER_5_SOVEREIGN_BASE"
+    tier: "Tier 5"
+
+  # ---- Cryptographic identity (frozen vector values) ----
+  # Metadata labels match Genesis's emitted casing.
+  # Digests are unchanged — the label is not part of the hashed payload.
+  fingerprintAlgorithm: "SHA-256"
+  fingerprintVersion: "v1"
+  fingerprint: "0x42be581c4e264123b6880171e0b3d9e8db7eeb3d2b1cde001a512af62a6dedd3"
+  identity_fingerprint: "0x42be581c4e264123b6880171e0b3d9e8db7eeb3d2b1cde001a512af62a6dedd3"
+
+  purposeHashAlgorithm: "SHA3-256"
+  purposeHash: "0x622d41c58a980edd312d8576e30029041430d266c81d7be0772facb89c7d9d1e"
+  purpose_pulse_hash: "0x622d41c58a980edd312d8576e30029041430d266c81d7be0772facb89c7d9d1e"
+
+  # ---- Digital Fingerprint (derived from identity fingerprint) ----
+  digital_fingerprint_hash: "0xa65f11f6c418c3dde33c90c1cdc917e9db8ee260cdeef0162722d5d4c5ed612e"
+
+  # ---- Covenant (Gate 9 only) ----
+  covenantAlgorithm: "SHA3-512"
+  covenant_hash: "0x599c63f449915e2555da313c5d9bcbf1c5eb56aebbd3cc9e0b8978caf7c95b8c0adea5d6730c602ee11cf8a3e45a708fcb595ac14166ad69682498406bc26e18"
+
+  # ---- Gate authorization ----
+  accessible_gates:
+    - "GATE_01"
+    - "GATE_02"
+    - "GATE_03"
+    - "GATE_04"
+    - "GATE_05"
+    - "GATE_06"
+    - "GATE_07"
+    - "GATE_08"
+    - "GATE_09"
+
+  # ---- Lifecycle ----
+  lastUpdated: "2026-10-04T00:00:00Z"

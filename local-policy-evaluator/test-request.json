@@ -1,0 +1,110 @@
+{
+  "correlation_id": "test-001",
+  "request_hash": "0x00",
+  "identity": {
+    "acelogic_id": "ACE-RAN-001",
+    "identity_fingerprint": "0x2576a4d81cb15fea2479c8b3f174f566c3cbcbbf6b1d9ac823e241b259cf8acf",
+    "purpose_pulse_hash": "0x1a051fd6ce83e29316ce5c9a8e37e46709439d8f8c9b56a4c0587b9cd45df09a",
+    "fingerprintAlgorithm": "SHA-256",
+    "purposeHashAlgorithm": "SHA3-256",
+    "covenant_hash": null,
+    "digital_fingerprint_hash": null,
+    "namespace": "#us#.test.enterprise.ai",
+    "mission": "Test mission"
+  },
+  "organization": {
+    "org_id": "org-test",
+    "tenant_id": "org-test",
+    "accessible_gates": ["GATE_01"],
+    "state": "ACTIVE"
+  },
+  "identityPayload": {
+    "schema": "acelogic.identity.v1",
+    "acelogic_id": "ACE-RAN-001",
+    "org_id": "org-test",
+    "agent_class": "ENTERPRISE_AGENT",
+    "namespace": "#us#.test.enterprise.ai",
+    "full_identity": null,
+    "owner": { "name": null },
+    "license_birth": {
+      "issued_license_id": null,
+      "template_id": null,
+      "code": null,
+      "tier": null
+    }
+  },
+  "purposePayload": {
+    "schema": "acelogic.purpose.v1",
+    "acelogic_id": "ACE-RAN-001",
+    "mission": "Test mission",
+    "agent_class": "ENTERPRISE_AGENT",
+    "compliance": null,
+    "jurisdiction": null
+  },
+  "covenantPayload": null,
+  "loopConfig": {
+    "loop_id": "airan_mission_loop",
+    "loop_version": "1.0.0",
+    "coordinator_agent_id": "ACE-RAN-001",
+    "assigned_agents": {
+      "observer":  "ACE-RAN-OBS-001",
+      "security":  "ACE-RAN-SEC-001",
+      "optimizer": "ACE-RAN-OPT-001",
+      "grader":    "ACE-RAN-GRD-001",
+      "auditor":   "ACE-RAN-AUD-001"
+    },
+    "assigned_models": {
+      "observer":  { "provider": "openai",    "model_id": "gpt-4o" },
+      "security":  { "provider": "anthropic", "model_id": "claude-3-5-sonnet" },
+      "optimizer": { "provider": "openai",    "model_id": "gpt-4o" },
+      "grader":    { "provider": "openai",    "model_id": "gpt-4o-mini" },
+      "auditor":   { "provider": "private",   "model_id": "acelogic-auditor-v1" }
+    },
+    "task": {
+      "task_id": "airan_mission_loop_task_001",
+      "task_type": "MISSION_CRITICAL_AI_RAN",
+      "params": {
+        "cell_site": "demo-cell-01",
+        "priority": "network_service_continuity"
+      }
+    },
+    "step_graph": {
+      "nodes": [
+        { "step_id": "S00",  "type": "INGEST_TELEMETRY" },
+        { "step_id": "S10",  "type": "CLASSIFY_NETWORK_STATE" },
+        { "step_id": "S20",  "type": "SECURITY_ANALYSIS" },
+        { "step_id": "S30",  "type": "GENERATE_OPTIMIZATION" },
+        { "step_id": "S40",  "type": "POLICY_EVALUATION" },
+        { "step_id": "S50",  "type": "AUTHORITY_VALIDATION" },
+        { "step_id": "S60",  "type": "APPLY_SIMULATED_NETWORK_ACTION" },
+        { "step_id": "S70",  "type": "VERIFY_NETWORK_RESPONSE" },
+        { "step_id": "S80",  "type": "GRADER_EVALUATION" },
+        { "step_id": "S90",  "type": "RECORD_EVIDENCE" },
+        { "step_id": "S100", "type": "CONTINUE_LOOP" }
+      ],
+      "edges": [
+        { "from": "S00",  "to": "S10"  },
+        { "from": "S10",  "to": "S20"  },
+        { "from": "S20",  "to": "S30"  },
+        { "from": "S30",  "to": "S40"  },
+        { "from": "S40",  "to": "S50"  },
+        { "from": "S50",  "to": "S60"  },
+        { "from": "S60",  "to": "S70"  },
+        { "from": "S70",  "to": "S80"  },
+        { "from": "S80",  "to": "S90"  },
+        { "from": "S90",  "to": "S100" }
+      ]
+    },
+    "required_capabilities": ["ACEPLACE_EXECUTION", "MACHINE_GRAMMAR_US"],
+    "entitlement_set_version": "v1",
+    "governance_requirements": {
+      "human_checkpoint": false,
+      "approval_policy": null
+    },
+    "runtime_requirements": {
+      "hosted": true,
+      "network_access": ["simulator_endpoint"],
+      "bounded_integrations": ["wireless_digital_twin_adapter"]
+    }
+  }
+}

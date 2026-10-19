@@ -1,0 +1,447 @@
+// ############################################################
+// #                ACELOGIC PLATFORM v4                      #
+// # Module        : SERVER                                   #
+// # Environment   : Development                              #
+// # Version       : 4.3.0                                    #
+// # Updated       : 2026-10-17                               #
+// # Prepared by   : Tesfu — ACELOGIC Control Plane Lead      #
+// #                                                          #
+// # v4.3.0 adds bearer token authentication on the Control   #
+// # Plane admission endpoint. Fail-closed when               #
+// # CONTROL_PLANE_API_KEY is not set.                        #
+// ############################################################
+
+import fs from 'fs';
+import https from 'https';
+import crypto from 'crypto';
+import express from 'express';
+import k8s from '@kubernetes/client-node';
+
+import { evaluatePodAgainstPolicy } from './evaluator.js';
+import { evaluateAdmission } from './admission.js';
+
+const app = express();
+app.use(express.json({ limit: '128kb' }));
+
+// ------------------------------------------------------------------
+// Kubernetes client
+// ------------------------------------------------------------------
+
+const kc = new k8s.KubeConfig();
+kc.loadFromDefault();
+const customApi = kc.makeApiClient(k8s.CustomObjectsApi);
+
+// ------------------------------------------------------------------
+// Runtime configuration
+// ------------------------------------------------------------------
+
+const POLICY_NAMESPACE =
+  process.env.POLICY_NAMESPACE || 'acelogic-system';
+const CACHE_REFRESH_MS =
+  Number(process.env.CACHE_REFRESH_MS || 10000);
+const ACELOGIC_MODE =
+  process.env.ACELOGIC_MODE || 'FAIL_CLOSED';
+const CONTROL_PLANE_API_KEY =
+  process.env.CONTROL_PLANE_API_KEY || null;
+
+// ------------------------------------------------------------------
+// Authentication middleware
+//
+// Phase 1: shared bearer token, injected via environment.
+// Phase 2+ (CARP): replace with signed service account tokens.
+//
+// Fail closed: if no key is configured, every admission request is
+// rejected with 503. Never run unauthenticated in a shared env.
+// ------------------------------------------------------------------
+
+function constantTimeEqual(a, b) {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function requireBearerToken(req, res, next) {
+  if (!CONTROL_PLANE_API_KEY) {
+    return res.status(503).json({
+      decision: 'DENY',
+      reason_code: 'ACELOGIC_INTERNAL_ERROR',
+      evidence: {
+        checks_passed: [],
+        failed_check: 'ACELOGIC_INTERNAL_ERROR',
+        details: { message: 'control plane api key not configured' }
+      },
+      correlation_id: (req.body && req.body.correlation_id) || null,
+      evaluated_at: new Date().toISOString()
+    });
+  }
+
+  const header = req.get('authorization') || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+
+  if (!match) {
+    return res.status(401).json({
+      decision: 'DENY',
+      reason_code: 'ACELOGIC_AUTHENTICATION_MISSING',
+      evidence: {
+        checks_passed: [],
+        failed_check: 'ACELOGIC_AUTHENTICATION_MISSING',
+        details: { message: 'missing bearer token' }
+      },
+      correlation_id: (req.body && req.body.correlation_id) || null,
+      evaluated_at: new Date().toISOString()
+    });
+  }
+
+  const presented = match[1];
+
+  if (!constantTimeEqual(presented, CONTROL_PLANE_API_KEY)) {
+    return res.status(401).json({
+      decision: 'DENY',
+      reason_code: 'ACELOGIC_AUTHENTICATION_INVALID',
+      evidence: {
+        checks_passed: [],
+        failed_check: 'ACELOGIC_AUTHENTICATION_INVALID',
+        details: { message: 'invalid bearer token' }
+      },
+      correlation_id: (req.body && req.body.correlation_id) || null,
+      evaluated_at: new Date().toISOString()
+    });
+  }
+
+  next();
+}
+
+// ------------------------------------------------------------------
+// Policy cache
+// ------------------------------------------------------------------
+
+let policyCache = new Map();
+let cacheInitialized = false;
+let refreshing = false;
+
+async function refreshCache() {
+  if (refreshing) return;
+  refreshing = true;
+
+  try {
+    const response = await customApi.listNamespacedCustomObject(
+      'acelogic.ai',
+      'v1',
+      POLICY_NAMESPACE,
+      'agentidentitypolicies'
+    );
+
+    const items = (response.body && response.body.items) || [];
+    const newCache = new Map();
+
+    for (const item of items) {
+      const agentId = item.spec && item.spec.agentId;
+      if (agentId) newCache.set(agentId, item);
+    }
+
+    policyCache = newCache;
+
+    console.log(
+      JSON.stringify({
+        event: cacheInitialized ? 'CACHE_REFRESH' : 'CACHE_INITIALIZED',
+        policyCount: policyCache.size,
+        timestamp: new Date().toISOString()
+      })
+    );
+
+    cacheInitialized = true;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: 'CACHE_REFRESH_FAILED',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      })
+    );
+  } finally {
+    refreshing = false;
+  }
+}
+
+refreshCache();
+setInterval(refreshCache, CACHE_REFRESH_MS);
+
+function getPolicyByAgentId(agentId) {
+  return policyCache.get(agentId) || null;
+}
+
+// ------------------------------------------------------------------
+// Metrics
+// ------------------------------------------------------------------
+
+const metrics = {
+  admission_allow_total: 0,
+  admission_deny_total: 0,
+  admission_auth_fail_total: 0,
+  identity_verify_fail_total: 0,
+  purpose_verify_fail_total: 0,
+  continuity_fail_total: 0,
+  lease_expired_total: 0,
+  policy_cache_refresh_total: 0,
+  local_policy_error_total: 0
+};
+
+function incrementMetrics(decision, reason) {
+  if (decision.allowed) {
+    metrics.admission_allow_total++;
+    return;
+  }
+  metrics.admission_deny_total++;
+
+  if (reason.includes('FINGERPRINT')) {
+    metrics.identity_verify_fail_total++;
+  } else if (reason.includes('PURPOSE')) {
+    metrics.purpose_verify_fail_total++;
+  } else if (
+    reason.includes('CONTINUITY') ||
+    reason.includes('DUPLICATE')
+  ) {
+    metrics.continuity_fail_total++;
+  } else if (reason.includes('LEASE')) {
+    metrics.lease_expired_total++;
+  }
+}
+
+// ------------------------------------------------------------------
+// Kubernetes admission response
+// ------------------------------------------------------------------
+
+function admissionResponse(uid, allowed, reason) {
+  return {
+    apiVersion: 'admission.k8s.io/v1',
+    kind: 'AdmissionReview',
+    response: {
+      uid,
+      allowed,
+      status: {
+        code: allowed ? 200 : 403,
+        message: allowed
+          ? 'ACELOGIC_APPROVED'
+          : `ACELOGIC_DENIED:${reason}`
+      }
+    }
+  };
+}
+
+// ------------------------------------------------------------------
+// Kubernetes admission webhook (unauthenticated — cluster-internal)
+// ------------------------------------------------------------------
+
+app.post('/validate', async (req, res) => {
+  const review = req.body;
+  const request = review.request;
+  const uid = request && request.uid;
+
+  try {
+    if (!request) {
+      return res.json(
+        admissionResponse(uid, false, 'ACELOGIC_INVALID_REQUEST')
+      );
+    }
+
+    if (request.operation === 'DELETE') {
+      return res.json(
+        admissionResponse(uid, true, 'ACELOGIC_DELETE_ALLOWED')
+      );
+    }
+
+    if (!request.kind || request.kind.kind !== 'Pod') {
+      return res.json(
+        admissionResponse(uid, true, 'ACELOGIC_NON_POD_BYPASS')
+      );
+    }
+
+    const pod = request.object;
+    const agentId =
+      pod.metadata &&
+      pod.metadata.labels &&
+      pod.metadata.labels['acelogic.ai/agent-id'];
+
+    if (!agentId) {
+      return res.json(
+        admissionResponse(uid, false, 'ACELOGIC_IDENTITY_MISSING')
+      );
+    }
+
+    const policy = getPolicyByAgentId(agentId);
+    const decision = evaluatePodAgainstPolicy({ pod, policy });
+
+    incrementMetrics(decision, decision.reason);
+
+    console.log(
+      JSON.stringify({
+        event: 'ADMISSION_EVALUATION',
+        requestUid: uid,
+        agentId,
+        namespace: pod.metadata.namespace,
+        pod: pod.metadata.name,
+        decision: decision.allowed ? 'ALLOW' : 'DENY',
+        reason: decision.reason,
+        timestamp: new Date().toISOString()
+      })
+    );
+
+    return res.json(
+      admissionResponse(uid, decision.allowed, decision.reason)
+    );
+  } catch (error) {
+    metrics.local_policy_error_total++;
+
+    console.error(
+      JSON.stringify({
+        event: 'LOCAL_POLICY_ERROR',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      })
+    );
+
+    return res.json(
+      admissionResponse(uid, false, 'ACELOGIC_INTERNAL_ERROR')
+    );
+  }
+});
+
+// ------------------------------------------------------------------
+// ACEPLACE admission endpoint (authenticated — bearer token)
+// ------------------------------------------------------------------
+
+app.post(
+  '/api/v1/control-plane/admission/evaluate',
+  requireBearerToken,
+  (req, res) => {
+    const result = evaluateAdmission(req.body);
+
+    const auditLog = {
+      event: 'ACEPLACE_ADMISSION_EVALUATION',
+      correlation_id: (req.body && req.body.correlation_id) || null,
+      acelogic_id:
+        (req.body && req.body.identity && req.body.identity.acelogic_id) ||
+        null,
+      decision: result.decision,
+      reason_code: result.reason_code,
+      timestamp: new Date().toISOString()
+    };
+
+    console.log(JSON.stringify(auditLog));
+
+    return res.json(result);
+  }
+);
+
+// ------------------------------------------------------------------
+// Metrics endpoint (cluster-internal)
+// ------------------------------------------------------------------
+
+app.get('/metrics', (_, res) => {
+  res.set('Content-Type', 'text/plain');
+  let output = '';
+  for (const [key, value] of Object.entries(metrics)) {
+    output += `${key} ${value}\n`;
+  }
+  res.send(output);
+});
+
+// ------------------------------------------------------------------
+// Health endpoints (cluster-internal)
+// ------------------------------------------------------------------
+
+app.get('/healthz', (_, res) => {
+  return res.json({ ok: true, mode: ACELOGIC_MODE });
+});
+
+app.get('/readyz', (_, res) => {
+  if (!cacheInitialized) {
+    return res.status(503).json({ ok: false, reason: 'CACHE_NOT_READY' });
+  }
+  return res.json({ ok: true });
+});
+
+// ------------------------------------------------------------------
+// Express error handler — fail closed on malformed / oversized /
+// unrecoverable errors.
+// ------------------------------------------------------------------
+
+// eslint-disable-next-line no-unused-vars
+app.use((err, _req, res, _next) => {
+  if (err && err.type === 'entity.parse.failed') {
+    return res.status(400).json({
+      decision: 'DENY',
+      reason_code: 'ACELOGIC_INVALID_REQUEST',
+      evidence: {
+        checks_passed: [],
+        failed_check: 'ACELOGIC_INVALID_REQUEST',
+        details: { message: 'malformed JSON body' }
+      },
+      correlation_id: null,
+      evaluated_at: new Date().toISOString()
+    });
+  }
+
+  if (err && err.type === 'entity.too.large') {
+    return res.status(413).json({
+      decision: 'DENY',
+      reason_code: 'ACELOGIC_INVALID_REQUEST',
+      evidence: {
+        checks_passed: [],
+        failed_check: 'ACELOGIC_INVALID_REQUEST',
+        details: { message: 'request body exceeds 128 KB' }
+      },
+      correlation_id: null,
+      evaluated_at: new Date().toISOString()
+    });
+  }
+
+  console.error(
+    JSON.stringify({
+      event: 'SERVER_ERROR_HANDLER',
+      error: (err && err.message) || 'unknown',
+      timestamp: new Date().toISOString()
+    })
+  );
+
+  return res.status(503).json({
+    decision: 'DENY',
+    reason_code: 'ACELOGIC_INTERNAL_ERROR',
+    evidence: {
+      checks_passed: [],
+      failed_check: 'ACELOGIC_INTERNAL_ERROR',
+      details: { message: (err && err.message) || 'unknown' }
+    },
+    correlation_id: null,
+    evaluated_at: new Date().toISOString()
+  });
+});
+
+// ------------------------------------------------------------------
+// HTTPS server
+// ------------------------------------------------------------------
+
+const tlsOptions = {
+  key: fs.readFileSync(process.env.TLS_KEY_PATH || '/app/tls/tls.key'),
+  cert: fs.readFileSync(process.env.TLS_CERT_PATH || '/app/tls/tls.crt')
+};
+
+const PORT = process.env.PORT || 8443;
+
+https.createServer(tlsOptions, app).listen(PORT, () => {
+  console.log(
+    JSON.stringify({
+      event: 'ACELOGIC_SERVER_STARTED',
+      mode: ACELOGIC_MODE,
+      policyNamespace: POLICY_NAMESPACE,
+      port: PORT,
+      authEnabled: Boolean(CONTROL_PLANE_API_KEY),
+      timestamp: new Date().toISOString()
+    })
+  );
+});
+
+// ############################################################
+// # End of File: server.js
+// ############################################################

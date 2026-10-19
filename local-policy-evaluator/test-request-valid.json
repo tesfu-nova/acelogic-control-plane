@@ -1,0 +1,51 @@
+{
+  "correlation_id": "test-002",
+  "request_hash": "0x887c3e31d322f4ef577d68b607dc469fe29fd09e2578ddb4ce51b2e8d01f0aae",
+  "identity": {
+    "acelogic_id": "ACE-TEST",
+    "identity_fingerprint": "0x2576a4d81cb15fea2479c8b3f174f566c3cbcbbf6b1d9ac823e241b259cf8acf",
+    "purpose_pulse_hash": "0x1a051fd6ce83e29316ce5c9a8e37e46709439d8f8c9b56a4c0587b9cd45df09a",
+    "fingerprintAlgorithm": "SHA-256",
+    "purposeHashAlgorithm": "SHA3-256",
+    "covenant_hash": null,
+    "digital_fingerprint_hash": null,
+    "namespace": "#us#.test.enterprise.ai",
+    "mission": "Test mission"
+  },
+  "organization": {
+    "org_id": "org-test",
+    "tenant_id": "org-test",
+    "accessible_gates": ["GATE_01"],
+    "state": "ACTIVE"
+  },
+  "identityPayload": {
+    "schema": "acelogic.identity.v1",
+    "acelogic_id": "ACE-TEST",
+    "org_id": "org-test",
+    "agent_class": "ENTERPRISE_AGENT",
+    "namespace": "#us#.test.enterprise.ai",
+    "full_identity": null,
+    "owner": { "name": null },
+    "license_birth": {
+      "issued_license_id": null,
+      "template_id": null,
+      "code": null,
+      "tier": null
+    }
+  },
+  "purposePayload": {
+    "schema": "acelogic.purpose.v1",
+    "acelogic_id": "ACE-TEST",
+    "mission": "Test mission",
+    "agent_class": "ENTERPRISE_AGENT",
+    "compliance": null,
+    "jurisdiction": null
+  },
+  "covenantPayload": null,
+  "loopConfig": {
+    "loop_id": "test_loop",
+    "loop_version": "1.0.0",
+    "task": { "task_id": "task_001" },
+    "step_graph": { "nodes": [ { "step_id": "S00" } ] }
+  }
+}

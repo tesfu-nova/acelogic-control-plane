@@ -1,0 +1,72 @@
+{
+  "correlation_id": "test-conflict-001",
+  "identity": {
+    "acelogic_id": "ACE-TEST",
+    "identity_fingerprint": "<PASTE identity_fingerprint HERE>",
+    "purpose_pulse_hash": "<PASTE purpose_pulse_hash HERE>",
+    "namespace": "#us#.test.enterprise.ai",
+    "mission": "Test mission"
+  },
+  "organization": {
+    "org_id": "org-test",
+    "tenant_id": "tenant-test",
+    "k8s_namespace": "us-test-enterprise-ai",
+    "accessible_gates": ["GATE_01"],
+    "state": "ACTIVE",
+    "grammarLicense": {
+      "enabled": true,
+      "level": "RESTRICTED",
+      "allowedPrefixes": ["#us#.test."]
+    }
+  },
+  "runtime": {
+    "canonical_runtime_id": "RT-TEST",
+    "runtime_instance_id": "RTI-TEST-002"
+  },
+  "envelope": {
+    "envelope_id": "ENV-TEST",
+    "envelope_version": 1,
+    "step_id": "STEP-01",
+    "namespace": "us-test-enterprise-ai"
+  },
+  "lease": {
+    "lease_id": "LEASE-TEST-002",
+    "authority_epoch": 1,
+    "not_after": "2099-12-31T00:00:00Z"
+  },
+  "claimants": {
+    "this_claimant_id": "RTI-TEST-002",
+    "active_claimants": [
+      {
+        "claimant_id": "RTI-TEST",
+        "identity_id": "ACE-TEST",
+        "envelope_id": "ENV-TEST",
+        "runtime_id": "RT-TEST",
+        "runtime_instance_id": "RTI-TEST"
+      }
+    ]
+  },
+  "identityPayload": {
+    "schema": "acelogic.identity.v1",
+    "acelogic_id": "ACE-TEST",
+    "org_id": "org-test",
+    "agent_class": "ENTERPRISE_AGENT",
+    "namespace": "#us#.test.enterprise.ai",
+    "full_identity": null,
+    "owner": { "name": null },
+    "license_birth": {
+      "issued_license_id": null,
+      "template_id": null,
+      "code": null,
+      "tier": null
+    }
+  },
+  "purposePayload": {
+    "schema": "acelogic.purpose.v1",
+    "acelogic_id": "ACE-TEST",
+    "mission": "Test mission",
+    "agent_class": "ENTERPRISE_AGENT",
+    "compliance": null,
+    "jurisdiction": null
+  }
+}

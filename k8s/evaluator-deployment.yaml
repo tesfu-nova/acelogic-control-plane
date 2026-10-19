@@ -1,0 +1,221 @@
+############################################################
+# ACELOGIC PLATFORM v4
+############################################################
+# Module        : EVALUATOR-DEPLOYMENT
+# Environment   : Development
+# Version       : 4.1.0
+# Updated       : 2026-05-15
+#
+# Purpose:
+# Deployment configuration for the ACELOGIC™
+# Local Policy Evaluator admission webhook.
+#
+# Responsibilities:
+# - deterministic admission enforcement
+# - identity validation
+# - continuity governance
+# - duplicate-runtime prevention
+# - fail-closed execution control
+#
+############################################################
+
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: acelogic-evaluator
+
+  namespace: acelogic-system
+
+  labels:
+    app.kubernetes.io/name: acelogic-evaluator
+    app.kubernetes.io/component: admission-webhook
+    app.kubernetes.io/part-of: acelogic-control-plane
+
+spec:
+  replicas: 2
+
+  revisionHistoryLimit: 5
+
+  selector:
+    matchLabels:
+      app: acelogic-evaluator
+
+  template:
+
+    metadata:
+      labels:
+        app: acelogic-evaluator
+
+        app.kubernetes.io/name: acelogic-evaluator
+        app.kubernetes.io/component: admission-webhook
+
+    spec:
+
+      ########################################################
+      # Service Account
+      ########################################################
+
+      serviceAccountName: acelogic-evaluator
+
+      ########################################################
+      # Pod Security Context
+      ########################################################
+
+      securityContext:
+        runAsNonRoot: true
+
+        runAsUser: 1001
+
+        fsGroup: 1001
+
+      ########################################################
+      # Containers
+      ########################################################
+
+      containers:
+
+        - name: evaluator
+
+          image: acelogic/evaluator:v4.1.0
+
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 8443
+              name: https
+
+          ####################################################
+          # Environment
+          ####################################################
+
+          env:
+
+            - name: POLICY_NAMESPACE
+              value: "acelogic-system"
+
+            - name: ACELOGIC_MODE
+              value: "FAIL_CLOSED"
+
+            - name: CACHE_STRATEGY
+              value: "WATCH"
+
+          ####################################################
+          # TLS Certificates
+          ####################################################
+
+          volumeMounts:
+
+            - name: tls
+              mountPath: /app/tls
+              readOnly: true
+
+          ####################################################
+          # Resource Governance
+          ####################################################
+
+          resources:
+
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+          ####################################################
+          # Health Probes
+          ####################################################
+
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8443
+              scheme: HTTPS
+
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          ####################################################
+          # Container Security
+          ####################################################
+
+          securityContext:
+
+            allowPrivilegeEscalation: false
+
+            readOnlyRootFilesystem: true
+
+            capabilities:
+              drop:
+                - ALL
+
+      ########################################################
+      # TLS Secret
+      ########################################################
+
+      volumes:
+
+        - name: tls
+
+          secret:
+            secretName: acelogic-evaluator-tls
+
+      ########################################################
+      # High Availability Scheduling
+      ########################################################
+
+      affinity:
+
+        podAntiAffinity:
+
+          preferredDuringSchedulingIgnoredDuringExecution:
+
+            - weight: 100
+
+              podAffinityTerm:
+
+                labelSelector:
+                  matchLabels:
+                    app: acelogic-evaluator
+
+                topologyKey: kubernetes.io/hostname
+
+---
+############################################################
+# Pod Disruption Budget
+############################################################
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+
+metadata:
+  name: acelogic-evaluator
+
+  namespace: acelogic-system
+
+spec:
+  minAvailable: 1
+
+  selector:
+    matchLabels:
+      app: acelogic-evaluator
+
+############################################################
+# End of File: evaluator-deployment.yaml
+# Do not modify without code review
+############################################################

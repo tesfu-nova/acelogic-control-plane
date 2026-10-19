@@ -1,0 +1,33 @@
+{
+  "contractVersion": "v1",
+  "canonicalizationVersion": "v1",
+  "canonicalIdentityPayload": {
+    "schema": "acelogic.identity.v1",
+    "acelogic_id": "ACE-FIXTURE-GATES-1-6",
+    "org_id": "org-fixture",
+    "agent_class": "aceagent",
+    "namespace": "#us#.fixture.gates.1-6",
+    "full_identity": "#us#.fixture.gates.1-6.agent",
+    "owner": {
+      "name": "Fixture Owner"
+    },
+    "license_birth": {
+      "issued_license_id": "LIC-FIXTURE-001",
+      "template_id": "TPL-FIXTURE-001",
+      "code": "TIER_1_BUILDER_FREE_BASE",
+      "tier": "Tier 1"
+    }
+  },
+  "fingerprintAlgorithm": "SHA-256",
+  "expectedIdentityFingerprint": "0x882ec70a74a16d052e9feccd2d361806fa294754b044ad11ea15ca0bc537b71e",
+  "canonicalPurposePayload": {
+    "schema": "acelogic.purpose.v1",
+    "acelogic_id": "ACE-FIXTURE-GATES-1-6",
+    "mission": "Fixture mission for gates 1-6 regression",
+    "agent_class": "aceagent",
+    "compliance": ["Zero Trust"],
+    "jurisdiction": "US-FIXTURE"
+  },
+  "purposeAlgorithm": "SHA3-256",
+  "expectedPurposePulse": "0xfdbe86754911c309697582c82e62ac8dacbd4fdc591ec78e58fab882beed5246"
+}

@@ -1,0 +1,94 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: agentidentitypolicies.acelogic.ai
+spec:
+  group: acelogic.ai
+  names:
+    kind: AgentIdentityPolicy
+    plural: agentidentitypolicies
+    singular: agentidentitypolicy
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                agentId:
+                  type: string
+                agentClass:
+                  type: string
+                licenseTier:
+                  type: string
+                grammarLicense:
+                  type: object
+                symbolicNamespace:
+                  type: string
+                k8sNamespace:
+                  type: string
+                mission:
+                  type: string
+                owner:
+                  type: object
+
+                fingerprintAlgorithm:
+                  type: string
+                  enum:
+                    - SHA-256
+                    - sha256
+
+                fingerprintVersion:
+                  type: string
+
+                fingerprint:
+                  type: string
+
+                identity_fingerprint:
+                  type: string
+
+                purposeHashAlgorithm:
+                  type: string
+                  enum:
+                    - SHA3-256
+                    - sha3-256
+
+                purposeHash:
+                  type: string
+
+                purpose_pulse_hash:
+                  type: string
+
+                covenantAlgorithm:
+                  type: string
+                  enum:
+                    - SHA3-512
+                    - sha3-512
+
+                covenant_hash:
+                  type: string
+                  pattern: "^0x[0-9a-f]{128}$"
+
+                digital_fingerprint_hash:
+                  type: string
+
+                accessible_gates:
+                  type: array
+                  items:
+                    type: string
+
+                state:
+                  type: string
+
+                lease:
+                  type: object
+                  properties:
+                    epoch:
+                      type: integer
+                    expiresAt:
+                      type: string

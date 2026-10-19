@@ -1,0 +1,48 @@
+{
+    "correlation_id":  "test-bad-fp-001",
+    "identity":  {
+                     "acelogic_id":  "ACE-TEST",
+                     "identity_fingerprint":  "0xDEADBEEFDEADBEEFDEADBEEFDEADBEEFDEADBEEFDEADBEEFDEADBEEFDEADBEEF",
+                     "purpose_pulse_hash":  "0x3232572d5f9ae5a2b3ee9e5ff45908c6ac8a516d35207fc3c6210552cc9f0781",
+                     "namespace":  "#us#.test.enterprise.ai"
+                 },
+    "organization":  {
+                         "org_id":  "org-test",
+                         "tenant_id":  "tenant-test",
+                         "k8s_namespace":  "us-test-enterprise-ai"
+                     },
+    "runtime":  {
+                    "canonical_runtime_id":  "RT-TEST",
+                    "runtime_instance_id":  "RTI-TEST"
+                },
+    "envelope":  {
+                     "envelope_id":  "ENV-TEST",
+                     "envelope_version":  1,
+                     "step_id":  "STEP-01",
+                     "namespace":  "us-test-enterprise-ai"
+                 },
+    "lease":  {
+                  "lease_id":  "LEASE-TEST",
+                  "authority_epoch":  1,
+                  "not_after":  "2026-12-31T00:00:00Z"
+              },
+    "claimants":  {
+                      "this_claimant_id":  "RTI-TEST",
+                      "active_claimants":  [
+
+                                           ]
+                  },
+    "identityPayload":  {
+                            "schema":  "acelogic.identity.v1",
+                            "acelogic_id":  "ACE-TEST",
+                            "org_id":  "org-test",
+                            "agent_class":  "ENTERPRISE_AGENT",
+                            "namespace":  "#us#.test.enterprise.ai"
+                        },
+    "purposePayload":  {
+                           "schema":  "acelogic.purpose.v1",
+                           "acelogic_id":  "ACE-TEST",
+                           "mission":  "Test mission",
+                           "agent_class":  "ENTERPRISE_AGENT"
+                       }
+}

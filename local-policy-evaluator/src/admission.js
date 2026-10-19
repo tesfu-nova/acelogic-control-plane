@@ -1,0 +1,269 @@
+// ############################################################
+// #                ACELOGIC PLATFORM v4                      #
+// # Module        : ADMISSION (ACEPLACE-facing)              #
+// # Version       : 4.9.0                                    #
+// # Updated       : 2026-10-19                               #
+// # Prepared by   : Tesfu — ACELOGIC Control Plane Lead      #
+// ############################################################
+
+import crypto from 'crypto';
+import { evaluatePodAgainstPolicy } from './evaluator.js';
+import { emitDecisionEvent } from './gate01/events.js';
+import { DECISION, REASON } from './gate01/constants.js';
+import { mintAuthorization } from './gate01/authorization.js';
+import { canonicalJson } from '../../identity-compiler/src/index.js';
+
+import {
+  FINGERPRINT_ALGORITHM,
+  PURPOSE_HASH_ALGORITHM,
+  COVENANT_ALGORITHM
+} from '../../identity-compiler/src/index.js';
+
+const seenCorrelations = new Map();
+const DEDUP_WINDOW_MS = 5 * 60 * 1000;
+const DEDUP_MAX_ENTRIES = 10000;
+
+const NON_CACHEABLE_REASON_CODES = new Set([
+  'ACELOGIC_INTERNAL_ERROR',
+  'ACELOGIC_INVALID_REQUEST'
+]);
+
+function computeRequestHash(request) {
+  const { request_hash, ...payload } = request;
+  const input = 'ACELOGIC:REQUEST:v1\n' + canonicalJson(payload);
+  return '0x' + crypto.createHash('sha256').update(input, 'utf8').digest('hex');
+}
+
+function getCachedDecision(request) {
+  if (!request || !request.correlation_id) return null;
+  const cached = seenCorrelations.get(request.correlation_id);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > DEDUP_WINDOW_MS) {
+    seenCorrelations.delete(request.correlation_id);
+    return null;
+  }
+  return cached.result;
+}
+
+function rememberDecision(request, result) {
+  if (!request || !request.correlation_id) return;
+  const reasonCode = result.reason_code || result.reason;
+  if (NON_CACHEABLE_REASON_CODES.has(reasonCode)) return;
+  
+  seenCorrelations.set(request.correlation_id, {
+    result,
+    timestamp: Date.now()
+  });
+  
+  if (seenCorrelations.size > DEDUP_MAX_ENTRIES) {
+    const cutoff = Date.now() - DEDUP_WINDOW_MS;
+    for (const [k, v] of seenCorrelations) {
+      if (v.timestamp < cutoff) seenCorrelations.delete(k);
+    }
+  }
+}
+
+function buildPodFromRequest(request) {
+  const identity = request.identity || {};
+  return {
+    metadata: {
+      uid: request.correlation_id,
+      namespace: 'acelogic-system',
+      labels: {
+        'acelogic.ai/agent-id': identity.acelogic_id
+      },
+      annotations: {
+        'acelogic.ai/symbolic-namespace': identity.namespace,
+        'acelogic.ai/purpose-hash': identity.purpose_pulse_hash,
+        'acelogic.ai/correlation-id': request.correlation_id
+      }
+    }
+  };
+}
+
+function buildPolicyFromRequest(request) {
+  const identity = request.identity || {};
+  const organization = request.organization || {};
+
+  return {
+    spec: {
+      agentId: identity.acelogic_id,
+      agentClass: identity.agent_class,
+      symbolicNamespace: identity.namespace,
+      mission: identity.mission,
+      fingerprintAlgorithm: FINGERPRINT_ALGORITHM,
+      purposeHashAlgorithm: PURPOSE_HASH_ALGORITHM,
+      covenantAlgorithm: COVENANT_ALGORITHM,
+      fingerprint: identity.identity_fingerprint,
+      identity_fingerprint: identity.identity_fingerprint,
+      purposeHash: identity.purpose_pulse_hash,
+      purpose_pulse_hash: identity.purpose_pulse_hash,
+      covenant_hash: identity.covenant_hash,
+      digital_fingerprint_hash: identity.digital_fingerprint_hash || null,
+      digital_fingerprint_metadata: identity.digital_fingerprint_metadata || null,
+      identityPayload: request.identityPayload || null,
+      purposePayload: request.purposePayload || null,
+      covenantPayload: request.covenantPayload || null,
+      accessible_gates: organization.accessible_gates || null,
+      state: organization.state || null,
+      correlation_id: request.correlation_id
+    }
+  };
+}
+
+function buildResponse({
+  request, decision, reasonCode, evidence, checksPassed, failedCheck, authorization
+}) {
+  const response = {
+    decision,
+    reason_code: reasonCode,
+    evidence: {
+      checks_passed: checksPassed || [],
+      failed_check: failedCheck || null,
+      details: evidence || {}
+    },
+    correlation_id: (request && request.correlation_id) || null,
+    evaluated_at: new Date().toISOString()
+  };
+
+  if (authorization) {
+    response.authorization = authorization;
+  }
+
+  return response;
+}
+
+function finalize(request, response) {
+  emitDecisionEvent(response, request);
+  rememberDecision(request, response);
+  return response;
+}
+
+export function evaluateAdmission(request) {
+  const cached = getCachedDecision(request);
+  if (cached) return cached;
+
+  if (!request) {
+    return finalize(null, buildResponse({
+      request: null,
+      decision: DECISION.DENY,
+      reasonCode: 'ACELOGIC_INVALID_REQUEST',
+      evidence: { details: 'missing request body' },
+      checksPassed: [],
+      failedCheck: 'ACELOGIC_INVALID_REQUEST'
+    }));
+  }
+
+  if (!request.correlation_id) {
+    return finalize(request, buildResponse({
+      request,
+      decision: DECISION.DENY,
+      reasonCode: 'ACELOGIC_INVALID_REQUEST',
+      evidence: { details: 'missing correlation_id' },
+      checksPassed: [],
+      failedCheck: 'ACELOGIC_INVALID_REQUEST'
+    }));
+  }
+
+  try {
+    const expectedHash = computeRequestHash(request);
+    if (request.request_hash !== expectedHash) {
+      return finalize(request, buildResponse({
+        request,
+        decision: DECISION.DENY,
+        reasonCode: 'ACELOGIC_REQUEST_HASH_MISMATCH',
+        evidence: { expected: expectedHash, presented: request.request_hash },
+        checksPassed: [],
+        failedCheck: 'ACELOGIC_REQUEST_HASH_MISMATCH'
+      }));
+    }
+
+    const pod = buildPodFromRequest(request);
+    const policy = buildPolicyFromRequest(request);
+    const result = evaluatePodAgainstPolicy({ pod, policy });
+
+    if (!result.allowed) {
+      return finalize(request, buildResponse({
+        request,
+        decision: DECISION.DENY,
+        reasonCode: result.reason,
+        evidence: {},
+        checksPassed: [],
+        failedCheck: result.reason
+      }));
+    }
+
+    const scope = {
+      loop_id: request.loopConfig?.loop_id,
+      loop_version: request.loopConfig?.loop_version,
+      task_id: request.loopConfig?.task?.task_id,
+      step_id: request.loopConfig?.step_graph?.nodes?.[0]?.step_id || 'S00',
+      tenant_id: request.organization?.org_id,
+      acelogic_id: request.identity?.acelogic_id
+    };
+
+    const authorization = mintAuthorization({
+      request_hash: request.request_hash,
+      scope
+    });
+
+    return finalize(request, buildResponse({
+      request,
+      decision: DECISION.ALLOW,
+      reasonCode: REASON.ADMISSION_APPROVED,
+      evidence: {},
+      checksPassed: [
+        'identity',
+        'namespace',
+        'purpose',
+        'fingerprint',
+        'gate9',
+        'state',
+        'loop_config',
+        'request_hash'
+      ],
+      failedCheck: null,
+      authorization
+    }));
+    
+  } catch (error) {
+    return finalize(request, buildResponse({
+      request,
+      decision: DECISION.DENY,
+      reasonCode: 'ACELOGIC_INTERNAL_ERROR',
+      evidence: { error: error.message },
+      checksPassed: [],
+      failedCheck: 'ACELOGIC_INTERNAL_ERROR'
+    }));
+  }
+}
+
+// Added for Joshua's Gate 01 Requirement (Idempotent Reconciliation)
+export function getAdmissionStatus(correlationId) {
+  if (!correlationId) {
+    return { error: 'MISSING_CORRELATION_ID' };
+  }
+
+  const cached = seenCorrelations.get(correlationId);
+
+  if (!cached) {
+    return {
+      status: 'UNKNOWN_OR_EXPIRED',
+      message: 'No record found in the active 5-minute window.'
+    };
+  }
+
+  if (Date.now() - cached.timestamp > DEDUP_WINDOW_MS) {
+    seenCorrelations.delete(correlationId);
+    return {
+      status: 'UNKNOWN_OR_EXPIRED',
+      message: 'Record expired from memory.'
+    };
+  }
+
+  return {
+    status: 'RECONCILED',
+    cached_at: new Date(cached.timestamp).toISOString(),
+    decision_record: cached.result
+  };
+}

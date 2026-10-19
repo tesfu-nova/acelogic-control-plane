@@ -1,0 +1,61 @@
+{
+  "contractVersion": "v1",
+  "canonicalizationVersion": "v1",
+  "source": "cryptographicVectors.test.js (Shompod's frozen vector)",
+  "canonicalIdentityPayload": {
+    "schema": "acelogic.identity.v1",
+    "acelogic_id": "507f1f77bcf86cd799439011",
+    "org_id": "64f100000000000000000001",
+    "agent_class": "dimensional",
+    "namespace": "#us#.agent.dimensional.core",
+    "full_identity": "#us#.agent.dimensional.core.vectoragent",
+    "owner": {
+      "name": "Vector Authority"
+    },
+    "license_birth": {
+      "issued_license_id": "64f200000000000000000001",
+      "template_id": "64f300000000000000000001",
+      "code": "TIER_5_SOVEREIGN_BASE",
+      "tier": "Tier 5"
+    }
+  },
+  "fingerprintAlgorithm": "SHA-256",
+  "expectedIdentityFingerprint": "0x42be581c4e264123b6880171e0b3d9e8db7eeb3d2b1cde001a512af62a6dedd3",
+  "canonicalPurposePayload": {
+    "schema": "acelogic.purpose.v1",
+    "acelogic_id": "507f1f77bcf86cd799439011",
+    "mission": "Preserve deterministic continuity.",
+    "agent_class": "dimensional",
+    "compliance": ["Identity Sovereignty", "Continuity Ethics"],
+    "jurisdiction": "BD"
+  },
+  "purposeAlgorithm": "SHA3-256",
+  "expectedPurposePulse": "0x622d41c58a980edd312d8576e30029041430d266c81d7be0772facb89c7d9d1e",
+  "covenantAlgorithm": "SHA3-512",
+  "canonicalCovenantPayload": {
+    "schema": "acelogic.covenant.v1",
+    "acelogic_id": "507f1f77bcf86cd799439011",
+    "identity_fingerprint": "0x42be581c4e264123b6880171e0b3d9e8db7eeb3d2b1cde001a512af62a6dedd3",
+    "purpose_pulse_hash": "0x622d41c58a980edd312d8576e30029041430d266c81d7be0772facb89c7d9d1e",
+    "digital_fingerprint_hash": "0xa65f11f6c418c3dde33c90c1cdc917e9db8ee260cdeef0162722d5d4c5ed612e",
+    "metadata_signature": "0x2222222222222222222222222222222222222222222222222222222222222222",
+    "dcc_output": "0x3333333333333333333333333333333333333333333333333333333333333333",
+    "dimensional_hash": "0x4444444444444444444444444444444444444444444444444444444444444444",
+    "continuity": {
+      "cvr_hash": "0x8888888888888888888888888888888888888888888888888888888888888888",
+      "polygon_event_hash": "0x5555555555555555555555555555555555555555555555555555555555555555",
+      "polygon_tx_hash": "0x6666666666666666666666666666666666666666666666666666666666666666",
+      "xrpl_tx_hash": "7777777777777777777777777777777777777777777777777777777777777777",
+      "xrpl_ledger_index": 12345678
+    },
+    "governance": {
+      "org_id": "64f100000000000000000001",
+      "license_id": "64f200000000000000000001",
+      "license_tier": "Tier 5",
+      "compliance": ["Identity Sovereignty", "Continuity Ethics"],
+      "jurisdiction": "BD"
+    },
+    "covenant_version": "1.0"
+  },
+  "expectedCovenantHash": "0x599c63f449915e2555da313c5d9bcbf1c5eb56aebbd3cc9e0b8978caf7c95b8c0adea5d6730c602ee11cf8a3e45a708fcb595ac14166ad69682498406bc26e18"
+}

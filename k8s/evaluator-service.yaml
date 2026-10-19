@@ -1,0 +1,68 @@
+############################################################
+# ACELOGIC PLATFORM v4
+############################################################
+# Module        : EVALUATOR-SERVICE
+# Environment   : Development
+# Version       : 4.1.0
+# Updated       : 2026-05-15
+#
+# Purpose:
+# Internal Kubernetes service for the ACELOGIC™
+# Local Policy Evaluator admission webhook.
+#
+# Responsibilities:
+# - secure webhook routing
+# - cluster-local admission access
+# - deterministic policy enforcement connectivity
+# - TLS-secured admission communication
+#
+############################################################
+
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: acelogic-evaluator
+
+  namespace: acelogic-system
+
+  labels:
+    app.kubernetes.io/name: acelogic-evaluator
+
+    app.kubernetes.io/component: admission-webhook
+
+    app.kubernetes.io/part-of: acelogic-control-plane
+
+spec:
+
+  ##########################################################
+  # Internal Cluster Service
+  ##########################################################
+
+  type: ClusterIP
+
+  ##########################################################
+  # Service Selector
+  ##########################################################
+
+  selector:
+    app: acelogic-evaluator
+
+  ##########################################################
+  # TLS Admission Port
+  ##########################################################
+
+  ports:
+
+    - name: https
+
+      protocol: TCP
+
+      port: 443
+
+      targetPort: 8443
+
+############################################################
+# End of File: evaluator-service.yaml
+# Do not modify without code review
+############################################################

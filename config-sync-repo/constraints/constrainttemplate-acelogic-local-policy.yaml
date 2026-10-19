@@ -1,0 +1,329 @@
+############################################################
+# ACELOGIC PLATFORM v4
+############################################################
+# Module        : CONSTRAINTTEMPLATE-ACELOGIC-LOCAL-POLICY
+# Environment   : Development
+# Version       : 4.3.0
+# Updated       : 2026-10-08
+#
+# Purpose:
+# Cluster-local ACELOGIC™ policy binding enforcement.
+#
+# Covenant gating is based on accessible_gates (GATE_09), not on
+# licenseTier. Tier names are not gate definitions. TIER_5 does not
+# imply GATE_09 authorization.
+############################################################
+
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+
+metadata:
+  name: acelogicpolicybinding
+
+spec:
+  crd:
+    spec:
+      names:
+        kind: ACELOGICPolicyBinding
+
+      validation:
+        openAPIV3Schema:
+          type: object
+
+          properties:
+            policyNamespace:
+              type: string
+              minLength: 1
+
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+
+      rego: |
+        package acelogic.policybinding
+
+        ####################################################
+        # Protected Admission Operations
+        ####################################################
+
+        protected_operation {
+          input.review.operation == "CREATE"
+        }
+
+        protected_operation {
+          input.review.operation == "UPDATE"
+        }
+
+        ####################################################
+        # Safe Metadata Extraction
+        ####################################################
+
+        labels := object.get(input.review.object.metadata, "labels", {})
+
+        annotations := object.get(input.review.object.metadata, "annotations", {})
+
+        agent_id := object.get(labels, "acelogic.ai/agent-id", "")
+
+        symbolic_namespace := object.get(annotations, "acelogic.ai/symbolic-namespace", "")
+
+        ####################################################
+        # Inventory Availability
+        ####################################################
+
+        inventory_available {
+          data.inventory.namespace[input.parameters.policyNamespace]
+        }
+
+        ####################################################
+        # AgentIdentityPolicy Lookup
+        ####################################################
+
+        matching_policies[policy] {
+          some name
+
+          policy := data.inventory.namespace[input.parameters.policyNamespace]["acelogic.ai/v1"]["AgentIdentityPolicy"][name]
+
+          policy.spec.agentId == agent_id
+        }
+
+        exactly_one_policy {
+          count(matching_policies) == 1
+        }
+
+        selected_policy = policy {
+          exactly_one_policy
+          policy := matching_policies[_]
+        }
+
+        ####################################################
+        # Gate Authorization Helpers
+        #
+        # Covenant gating is determined by GATE_09 presence in
+        # accessible_gates. Tier is NOT a gate definition.
+        ####################################################
+
+        has_gate9 {
+          some i
+          selected_policy.spec.accessible_gates[i] == "GATE_09"
+        }
+
+        has_covenant_hash {
+          object.get(selected_policy.spec, "covenant_hash", null) != null
+        }
+
+        ####################################################
+        # Fail-Closed Inventory Protection
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          protected_operation
+
+          not inventory_available
+
+          msg := sprintf("ACELOGIC DENY: policy inventory unavailable namespace=%v", [input.parameters.policyNamespace])
+        }
+
+        ####################################################
+        # Missing Agent Identity
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          protected_operation
+
+          agent_id == ""
+
+          msg := "ACELOGIC DENY: missing deterministic agent identity label"
+        }
+
+        ####################################################
+        # Missing Symbolic Namespace
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          protected_operation
+
+          symbolic_namespace == ""
+
+          msg := "ACELOGIC DENY: missing symbolic namespace annotation"
+        }
+
+        ####################################################
+        # Ambiguous / Missing Policy Binding
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          protected_operation
+          inventory_available
+          agent_id != ""
+
+          count(matching_policies) == 0
+
+          msg := sprintf("ACELOGIC DENY: no AgentIdentityPolicy bound to agentId=%v", [agent_id])
+        }
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          protected_operation
+          inventory_available
+          agent_id != ""
+
+          count(matching_policies) > 1
+
+          msg := sprintf("ACELOGIC DENY: multiple AgentIdentityPolicy objects bound to agentId=%v", [agent_id])
+        }
+
+        ####################################################
+        # Identity State Enforcement
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          protected_operation
+          inventory_available
+          agent_id != ""
+          exactly_one_policy
+
+          policy := selected_policy
+
+          policy.spec.state != "ACTIVE"
+
+          msg := sprintf("ACELOGIC DENY: identity is not ACTIVE state=%v", [policy.spec.state])
+        }
+
+        ####################################################
+        # Symbolic Namespace Binding
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          protected_operation
+          inventory_available
+          agent_id != ""
+          symbolic_namespace != ""
+          exactly_one_policy
+
+          policy := selected_policy
+
+          symbolic_namespace != policy.spec.symbolicNamespace
+
+          msg := "ACELOGIC DENY: symbolic namespace mismatch"
+        }
+
+        ####################################################
+        # Kubernetes Namespace Projection
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          protected_operation
+          inventory_available
+          agent_id != ""
+          exactly_one_policy
+
+          policy := selected_policy
+
+          input.review.object.metadata.namespace != policy.spec.k8sNamespace
+
+          msg := "ACELOGIC DENY: projected Kubernetes namespace mismatch"
+        }
+
+        ####################################################
+        # Covenant Hash — Gate-Authorization Governance
+        #
+        # Covenant is authorized by GATE_09 presence, NOT by tier.
+        #   - covenant_hash present without GATE_09  → DENY
+        #   - GATE_09 present without covenant_hash  → DENY
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          protected_operation
+          inventory_available
+          agent_id != ""
+          exactly_one_policy
+          not has_gate9
+          has_covenant_hash
+
+          msg := "ACELOGIC DENY: covenant_hash is only allowed when GATE_09 is authorized"
+        }
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          protected_operation
+          inventory_available
+          agent_id != ""
+          exactly_one_policy
+          has_gate9
+          not has_covenant_hash
+
+          msg := "ACELOGIC DENY: GATE_09 requires covenant_hash"
+        }
+
+        ####################################################
+        # Immutable Agent Identity Protection
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          input.review.operation == "UPDATE"
+
+          old_labels := object.get(input.review.oldObject.metadata, "labels", {})
+          new_labels := object.get(input.review.object.metadata, "labels", {})
+
+          old_id := object.get(old_labels, "acelogic.ai/agent-id", "")
+          new_id := object.get(new_labels, "acelogic.ai/agent-id", "")
+
+          old_id != new_id
+
+          msg := "ACELOGIC DENY: agent identity mutation detected"
+        }
+
+        ####################################################
+        # Immutable Symbolic Namespace Protection
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          input.review.operation == "UPDATE"
+
+          old_annotations := object.get(input.review.oldObject.metadata, "annotations", {})
+          new_annotations := object.get(input.review.object.metadata, "annotations", {})
+
+          old_symbolic := object.get(old_annotations, "acelogic.ai/symbolic-namespace", "")
+          new_symbolic := object.get(new_annotations, "acelogic.ai/symbolic-namespace", "")
+
+          old_symbolic != new_symbolic
+
+          msg := "ACELOGIC DENY: symbolic namespace mutation detected"
+        }
+
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: ACELOGICPolicyBinding
+
+metadata:
+  name: acelogic-policy-binding
+
+spec:
+  enforcementAction: deny
+
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+
+    excludedNamespaces:
+      - kube-system
+      - gatekeeper-system
+      - acelogic-system
+
+  parameters:
+    policyNamespace: acelogic-system
+
+############################################################
+# End of File:
+# constrainttemplate-acelogic-local-policy.yaml
+############################################################

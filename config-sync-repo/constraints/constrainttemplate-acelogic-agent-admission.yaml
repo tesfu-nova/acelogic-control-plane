@@ -1,0 +1,139 @@
+############################################################
+# ACELOGIC PLATFORM v4
+############################################################
+# Module        : CONSTRAINTTEMPLATE-ACELOGIC-AGENT-ADMISSION
+# Environment   : Development
+# Version       : 4.1.0
+# Updated       : 2026-05-15
+#
+# Purpose:
+# Deterministic identity admission enforcement
+# for ACELOGIC-governed Kubernetes workloads.
+############################################################
+
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: acelogicagentadmission
+
+spec:
+  crd:
+    spec:
+      names:
+        kind: ACELOGICAgentAdmission
+
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            enforcedNamespaces:
+              type: array
+              items:
+                type: string
+
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+
+      rego: |
+        package acelogic.agentadmission
+
+        ####################################################
+        # Namespace Enforcement
+        ####################################################
+
+        enforced_namespace {
+          input.review.object.metadata.namespace == input.parameters.enforcedNamespaces[_]
+        }
+
+        ####################################################
+        # Operation Filtering
+        ####################################################
+
+        protected_operation {
+          input.review.operation == "CREATE"
+        }
+
+        protected_operation {
+          input.review.operation == "UPDATE"
+        }
+
+        ####################################################
+        # Required Identity Labels
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          enforced_namespace
+          protected_operation
+
+          not input.review.object.metadata.labels["acelogic.ai/agent-id"]
+
+          msg := "ACELOGIC DENY: missing deterministic agent identity label"
+        }
+
+        ####################################################
+        # Required Symbolic Namespace Annotation
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          enforced_namespace
+          protected_operation
+
+          not input.review.object.metadata.annotations["acelogic.ai/symbolic-namespace"]
+
+          msg := "ACELOGIC DENY: missing symbolic namespace annotation"
+        }
+
+        ####################################################
+        # Required Purpose Hash Annotation
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          enforced_namespace
+          protected_operation
+
+          not input.review.object.metadata.annotations["acelogic.ai/purpose-hash"]
+
+          msg := "ACELOGIC DENY: missing purpose hash annotation"
+        }
+
+        ####################################################
+        # Immutable Agent Identity Protection
+        ####################################################
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          input.review.operation == "UPDATE"
+
+          old_id := input.review.oldObject.metadata.labels["acelogic.ai/agent-id"]
+          new_id := input.review.object.metadata.labels["acelogic.ai/agent-id"]
+
+          old_id != new_id
+
+          msg := "ACELOGIC DENY: agent identity mutation detected"
+        }
+
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: ACELOGICAgentAdmission
+
+metadata:
+  name: acelogic-agent-admission-required
+
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+
+  parameters:
+    enforcedNamespaces:
+      - us-enterprise-partner-ai
+      - us-defense-ran-edge
+
+############################################################
+# End of File:
+# constrainttemplate-acelogic-agent-admission.yaml
+############################################################
